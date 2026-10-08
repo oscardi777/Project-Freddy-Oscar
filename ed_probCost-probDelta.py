@@ -13,12 +13,13 @@ Para cada simulación:
 Al final genera:
   - Resumen estadístico en consola
   - Archivo Excel con todas las realizaciones + percentiles
+  - Gráficas en la carpeta plots/
 
 Uso:
-    python ed_montecarlo.py
+    python ed_probCost-probDelta.py
 
 Dependencias:
-    pip install pyomo pandas openpyxl numpy
+    pip install pyomo pandas openpyxl numpy matplotlib scipy
     Solver CBC instalado y en el PATH
 """
 
@@ -30,6 +31,11 @@ import numpy as np
 import pandas as pd
 import pyomo.environ as pyo
 from pyomo.opt import TerminationCondition, SolverStatus
+
+import matplotlib
+matplotlib.use("Agg")  # backend no interactivo (guarda archivos sin abrir ventana)
+import matplotlib.pyplot as plt
+from scipy import stats
 
 # =============================================================================
 # PARÁMETROS CONFIGURABLES
@@ -48,20 +54,21 @@ X_MIN = 200.0               # límite inferior del delta (GWh)
 X_MAX = 400.0               # límite superior del delta (GWh)
 
 # ----- Monte Carlo -----
-N_SIM = 500
+N_SIM = 1000
 RANDOM_SEED = 42
 
 # ----- Modelo -----
 ALLOW_ENS = True
 ENS_PENALTY = 1.0e7          # COP/MWh
 USE_MIN_TECH = True
-MIN_TECH_BINARY = False      # False = LP puro (rápido)
+MIN_TECH_BINARY = True      # False = LP puro (rápido)
 
 SOLVER_NAME = "cbc"
 SOLVER_TEE = False
 
 # Archivos de salida
 OUTPUT_EXCEL = "data-output/resultados_probCost-probDelta.xlsx"
+PLOTS_DIR = "plots"
 
 TO_MWH = {"MWH": 1.0, "GWH": 1000.0}
 REQUIRED_COLS = ["Tecnologia", "Costo_min", "Costo_max"]
@@ -345,6 +352,140 @@ def summarize_and_save(results_df, techs):
 
     print(f"\nResultados guardados en: {OUTPUT_EXCEL}")
     print("=" * 78)
+
+    # Gráficas
+    make_plots(ok, techs)
+
+
+# =============================================================================
+# GRÁFICAS
+# =============================================================================
+def make_plots(ok, techs):
+    """
+    Genera y guarda:
+      1. Costos simulados de todas las tecnologías (una sola figura)
+      2. Histograma + ajuste de distribución de energía por tecnología (una figura por tech)
+      3. Histograma del Delta X simulado
+    """
+    os.makedirs(PLOTS_DIR, exist_ok=True)
+    print(f"\nGenerando gráficas en '{PLOTS_DIR}/' ...")
+
+    # ------------------------------------------------------------------
+    # 1. Costos simulados – todas las tecnologías en una figura
+    # ------------------------------------------------------------------
+    fig, ax = plt.subplots(figsize=(10, 5))
+    cost_data = [ok[f"C_{t}"].values for t in techs]
+    # Compatibilidad: matplotlib >= 3.9 usa tick_labels; versiones anteriores usan labels
+    try:
+        bp = ax.boxplot(cost_data, tick_labels=techs, patch_artist=True, showmeans=True)
+    except TypeError:
+        bp = ax.boxplot(cost_data, labels=techs, patch_artist=True, showmeans=True)
+    colors = plt.cm.Set2(np.linspace(0, 1, len(techs)))
+    for patch, color in zip(bp["boxes"], colors):
+        patch.set_facecolor(color)
+        patch.set_alpha(0.7)
+    ax.set_ylabel(f"Costo simulado ({CURRENCY}/MWh)")
+    ax.set_title("Costos simulados por tecnología (Monte Carlo)")
+    ax.tick_params(axis="x", rotation=30)
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    path_costs = os.path.join(PLOTS_DIR, "costos_simulados_todas.png")
+    fig.savefig(path_costs, dpi=150)
+    plt.close(fig)
+    print(f"  → {path_costs}")
+
+    # ------------------------------------------------------------------
+    # 2. Energía por tecnología – histograma + ajuste de distribución
+    # ------------------------------------------------------------------
+    for t in techs:
+        col = f"E_{t}"
+        data = ok[col].dropna().values
+        if len(data) < 5:
+            print(f"  [!] Poca data para {t}, se omite gráfica de energía.")
+            continue
+
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+
+        # Histograma normalizado
+        n_bins = min(40, max(10, int(np.sqrt(len(data)))))
+        ax.hist(data, bins=n_bins, density=True, alpha=0.55, color="steelblue",
+                edgecolor="white", label="Histograma")
+
+        # Ajuste: probar normal y, si hay valores en el borde (capacidad),
+        # también mostrar KDE no paramétrico
+        try:
+            mu, sigma = stats.norm.fit(data)
+            x_grid = np.linspace(data.min(), data.max(), 200)
+            if sigma > 1e-9:
+                pdf_norm = stats.norm.pdf(x_grid, mu, sigma)
+                ax.plot(x_grid, pdf_norm, "r-", lw=2,
+                        label=f"Normal(μ={mu:.1f}, σ={sigma:.1f})")
+        except Exception:
+            pass
+
+        # KDE (suavizado no paramétrico)
+        try:
+            if data.std() > 1e-9:
+                kde = stats.gaussian_kde(data)
+                x_grid = np.linspace(data.min(), data.max(), 200)
+                ax.plot(x_grid, kde(x_grid), "g--", lw=1.8, label="KDE")
+        except Exception:
+            pass
+
+        ax.axvline(data.mean(), color="black", ls=":", lw=1.2,
+                   label=f"Media = {data.mean():.2f}")
+        ax.set_xlabel(f"Energía ({ENERGY_UNIT})")
+        ax.set_ylabel("Densidad")
+        ax.set_title(f"Energía utilizada – {t}")
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+
+        safe_name = t.replace(" ", "_").replace("/", "-")
+        path_e = os.path.join(PLOTS_DIR, f"energia_{safe_name}.png")
+        fig.savefig(path_e, dpi=150)
+        plt.close(fig)
+        print(f"  → {path_e}")
+
+    # ------------------------------------------------------------------
+    # 3. Delta X simulado
+    # ------------------------------------------------------------------
+    x_vals = ok["X"].dropna().values
+    if len(x_vals) >= 5:
+        fig, ax = plt.subplots(figsize=(8, 4.5))
+        n_bins = min(40, max(10, int(np.sqrt(len(x_vals)))))
+        ax.hist(x_vals, bins=n_bins, density=True, alpha=0.55, color="darkorange",
+                edgecolor="white", label="Histograma")
+
+        # Ajuste uniforme teórico (si se usó uniforme)
+        if STOCHASTIC_DELTA and X_MAX > X_MIN:
+            height = 1.0 / (X_MAX - X_MIN)
+            ax.hlines(height, X_MIN, X_MAX, colors="red", lw=2,
+                      label=f"Uniforme({X_MIN:.0f}, {X_MAX:.0f})")
+
+        # KDE
+        try:
+            if x_vals.std() > 1e-9:
+                kde = stats.gaussian_kde(x_vals)
+                x_grid = np.linspace(x_vals.min(), x_vals.max(), 200)
+                ax.plot(x_grid, kde(x_grid), "g--", lw=1.8, label="KDE")
+        except Exception:
+            pass
+
+        ax.axvline(x_vals.mean(), color="black", ls=":", lw=1.2,
+                   label=f"Media = {x_vals.mean():.2f}")
+        ax.set_xlabel(f"Delta X ({ENERGY_UNIT})")
+        ax.set_ylabel("Densidad")
+        ax.set_title("Delta X simulado (residual no hidráulico)")
+        ax.legend(fontsize=8)
+        ax.grid(alpha=0.3)
+        fig.tight_layout()
+        path_x = os.path.join(PLOTS_DIR, "delta_X_simulado.png")
+        fig.savefig(path_x, dpi=150)
+        plt.close(fig)
+        print(f"  → {path_x}")
+
+    print("Gráficas generadas.")
 
 
 # =============================================================================

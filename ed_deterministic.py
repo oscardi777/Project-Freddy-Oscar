@@ -32,7 +32,7 @@ from pyomo.opt import TerminationCondition, SolverStatus
 # =============================================================================
 
 
-RESIDUAL_X = 350.0                       # Residual de energía del día (en ENERGY_UNIT)
+RESIDUAL_X = 200.0                       # Residual de energía del día (en ENERGY_UNIT)
 EXCEL_FILE = "data-input/costos_tecnologias.xlsx"   # Archivo Excel con los datos
 SHEET_NAME = 0                           # Hoja a leer (índice o nombre)
 ENERGY_UNIT = "GWh"                      # "GWh" o "MWh" (unidad de X y de los resultados)
