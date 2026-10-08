@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Project Freddy Oscar - Ejecutor de Scripts</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Project Freddy Oscar</h1>
+            <p>Sistema Interactivo de Ejecución de Scripts Python</p>
+        </header>
+
+        <div class="main-content">
+            <!-- Panel Lateral Izquierdo -->
+            <aside class="sidebar">
+                <div class="panel">
+                    <h2>📂 Scripts Disponibles</h2>
+                    <div id="scriptsList" class="scripts-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>📊 Dataset de Entrada</h2>
+                    <div class="file-input-group">
+                        <label for="dataInputFile">Cargar CSV/Excel:</label>
+                        <input type="file" id="dataInputFile" accept=".csv,.xlsx,.xls" />
+                        <button id="loadDataBtn" class="btn btn-secondary">Cargar</button>
+                    </div>
+                    <div id="dataInputPreview" class="data-preview"></div>
+                </div>
+            </aside>
+
+            <!-- Panel Central -->
+            <main class="main-panel">
+                <!-- Sección de Parámetros -->
+                <section class="panel">
+                    <h2>⚙️ Parámetros del Script</h2>
+                    <div id="parametersPanel" class="parameters-grid"></div>
+                    <button id="executeBtn" class="btn btn-primary" style="margin-top: 15px;">
+                        ▶️ Ejecutar Script
+                    </button>
+                </section>
+
+                <!-- Sección de Resultados -->
+                <section class="panel">
+                    <h2>📈 Resultados</h2>
+                    <div id="resultsContainer" class="results-container">
+                        <p class="placeholder">Los resultados aparecerán aquí después de ejecutar</p>
+                    </div>
+                </section>
+
+                <!-- Sección de Logs -->
+                <section class="panel">
+                    <h2>📝 Logs de Ejecución</h2>
+                    <div id="logsContainer" class="logs-container"></div>
+                </section>
+            </main>
+
+            <!-- Panel Lateral Derecho -->
+            <aside class="sidebar">
+                <div class="panel">
+                    <h2>📥 Data-Output</h2>
+                    <div id="outputFilesList" class="output-files-list"></div>
+                </div>
+
+                <div class="panel">
+                    <h2>⚡ Acciones Rápidas</h2>
+                    <button id="clearLogsBtn" class="btn btn-secondary">Limpiar Logs</button>
+                    <button id="exportResultsBtn" class="btn btn-secondary">Exportar Resultados</button>
+                    <button id="refreshBtn" class="btn btn-secondary">Actualizar</button>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- Modal para visualizar archivos -->
+    <div id="fileModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2 id="modalTitle"></h2>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script src="backend.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
